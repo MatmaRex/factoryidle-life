@@ -1,4 +1,249 @@
 var basicIncome = 1e9;
+var lifeSize = 4; // 2, 3
+// var lifePattern = [
+// 	[1, 1],
+// 	[1, 1],
+// ];
+// var lifePattern = [
+// 	[0, 0, 0],
+// 	[1, 1, 1],
+// 	[0, 0, 0],
+// ];
+var lifePattern = [
+	[0, 1, 0, 0],
+	[0, 0, 1, 0],
+	[1, 1, 1, 0],
+	[0, 0, 0, 0],
+];
+
+function customTerrainMap(x, y) {
+	// Plain floor, X by Y
+	var s = ( new Array(x*y + 1) ).join(' ');
+	var a = s.split('');
+	// Edges
+	for(var i=0; i<x; i++) a[i] = 'G';
+	for(var i=0; i<x; i++) a[x*(y-1) + i] = 'G';
+	for(var i=0; i<y; i++) a[i*x] = 'G';
+	for(var i=0; i<y; i++) a[i*x+x-1] = 'G';
+	// Marks every 10 lines
+	for(var i=0; i<x; i+=10) a[i] = 'X';
+	for(var i=0; i<x; i+=10) a[x*(y-1) + i] = 'X';
+	for(var i=0; i<y; i+=10) a[i*x] = 'X';
+	for(var i=0; i<y; i+=10) a[i*x+x-1] = 'X';
+	return a.join('');
+}
+function customBuildMap(x, y) {
+	return customTerrainMap(x, y).replace(/G/g, 'X');
+}
+function customStartStuff(getWhat) {
+	var components = [], connections = [], sorters = [];
+
+	for(var y=0; y<lifeSize; y++) {
+		for(var x=0; x<lifeSize; x++) {
+			var cellData = getCell(x, y, lifePattern[y][x]);
+			components = components.concat( cellData[0] );
+			connections = connections.concat( cellData[1] );
+			sorters = sorters.concat( cellData[2] );
+		}
+	}
+
+	return getWhat === 'components' ? components : getWhat === 'sorters' ? sorters : connections
+}
+function getCell(positionX, positionY, alive) {
+	var width = 35, height = 29;
+	var realPositionX = 2 + positionX*(width-1);
+	var realPositionY = 2 + positionY*(height-1);
+
+	var components = [], connections = [], sorters = [];
+	function addComponent(id) {
+		if(positionY !== 0 && y === 0) {
+			// Ignore first row of components for cells other than the first. They are shared with the previous cell.
+			return;
+		}
+		if(positionX !== 0 && x === 0) {
+			// Ignore first column of components for cells other than the first. They are shared with the previous cell.
+			return;
+		}
+		components.push({
+			id: id,
+			x: x + realPositionX,
+			y: y + realPositionY
+		});
+	}
+	function addConnection(x1, y1, x2, y2) {
+		connections.push({
+			fromX: x1 + realPositionX,
+			fromY: y1 + realPositionY,
+			toX: x2 + realPositionX,
+			toY: y2 + realPositionY
+		});
+	}
+	function addSorter(offsetX, offsetY, resource) {
+		sorters.push({
+			x: x + realPositionX,
+			y: y + realPositionY,
+			offsetX: offsetX,
+			offsetY: offsetY,
+			resource: resource
+		});
+	}
+	var sorterMap = {
+		G: 'gas',
+		A: 'aluminium',
+		I: 'ironOre',
+		C: 'coal',
+		E: 'explosives',
+		S: 'silicon',
+		'-': '' // wildcard
+	};
+
+	// This defines the buildings used in the cell and the conveyor connections between them.
+	//
+	// * 'x' is a conveyor, and arrows 'v' '>' '^' '<' define its direction and which other conveyors
+	//   and buildings it connects to.
+	// * 'o' is a garbage dump.
+	// * Horizontal or vertical line '|' '-', five characters long, is a sorter. It can be annotated
+	//   with the outputs (e.g. '-G-A-' is a horizontal sorter outputting gas on the left, aluminium
+	//   on the right, and everything else in the middle).
+	// * Buyer buildings are represented by capital letters with '+' characters in the middle.
+
+	var s = '\
+o -A-G- ----- ----- ----- ----- ----- ----- ----- ----- ----- -G-A- o \n\
+    ^                                   ^   v                 v   v   \n\
+|>x>x<x                       o         x<x x   |   |   |     x   x | \n\
+G     ^                       ^           ^ v   |   |   |     v   v G \n\
+|     x     x<x<x<x<x<x<x<x<x<x<x<x<x<x<x<x<x<x<|<x<|<x<|<x<----- x>| \n\
+A     ^     v                 ^           ^     |   |   |     ^   ^ A \n\
+|>x>x x<x<x<x<x<x<x<x<x<x<x<x<x<x<x<x<x<x<x<x   |   |   |     x   x | \n\
+    v   v   v                 ^         ^ v ^                 ^   ^   \n\
+|   x<x<x<-----   x<x<x<x<x<x<x<x<x<x<x x<x x<x<x<x<x<x<x     x<x<x<| \n\
+|   v   v         v           ^       ^                 ^         ^ | \n\
+|<x<x<x<x o       x |>x>o     S>x G+A x<x<x<x<x<x<x<x<x x x>x>x>x>x | \n\
+|   v     ^       v |         + v   v                 ^ ^ ^         | \n\
+| ----- x<x<x     x |<x<x<|   I>x>o x>o x>x>x o   o   x x<x         | \n\
+    v   v ^ ^     v I ^   I   v     v   ^   v ^   ^   ^ ^ ^           \n\
+|   x -I--- -I--->x | x>x>|   x>x>o x>o I+R x>x>x>x>x>x x<x         | \n\
+|   v v ^     ^   v v ^ ^ |   v v   v   +++ v   v         ^         | \n\
+|   x x x>x>x>x<x x>x x>x |>x o x>o<x x<O+N o   o         x         | \n\
+|   v v ^   v   ^   v ^     v   v   v v v v               ^         | \n\
+|   x>x>x<-I--->x>o x>x>x>x>x | x>o x>o<x<x     I+R x<x   x         | \n\
+    ^   v   ^   ^   ^   v v v | v   v           +++ v ^   ^           \n\
+|   x   x>x>x>x>x x>x<| x>x>x>|>x   x>o     I+R O+N x x   x<x<x     | \n\
+|   ^   v v ^ ^   ^   I v v   I v   v       +++ v   v ^   ^ ^ ^     | \n\
+|   x o<x x>x |   x   |<x<x<x<| x<x x>o     O+N>x x<x x<| x>x x<x   | \n\
+|   ^   v     |   ^   | v       v ^ v           v v     C ^ v   ^   | \n\
+|   x<-I--->x>|   x   |>x>o     x -----   A+L>x>x>x>x>x>|>x x>x x   | \n\
+    ^         |   ^             v         +++ ^     ^ v I v   v ^     \n\
+|   x         | --GC->x<x<x<x<x<x<x<x x<x U+M G+A   x o | x>x x x   | \n\
+|   ^           v ^   v         v   ^ v ^           ^   v v v v ^   | \n\
+|   x           x<x -----     x>x o x<x x<x<x<x<x<----- x x<x>x>x   | \n\
+|   ^           v ^   v       ^ v ^                 ^   v v   v     | \n\
+|   x           o x<x<x       x x>x E+X           | x | o x<x<x     | \n\
+    ^             ^           ^ v ^ v             | ^ |   v           \n\
+|>x>x             x<x<S       -SS-- x<x<x I+R     | x |   x         | \n\
+|   ^             ^ ^ +         v   v   ^ +++     | ^ |   v         | \n\
+|   x         G+A>x S I         x -E--- x<O+N     | x |   x>x>x>x>x>| \n\
+|   ^             ^ +           v v                 ^     v     v   | \n\
+|   x           G+A I           x x o | ----- ----- x | -----   x   | \n\
+    ^                           v v ^ |             ^ | v       v     \n\
+|   x<x<-----             C+O   x>x>x>C>x>x>x>x>x>x>x | x       x   | \n\
+|   ^     ^               v     ^     S v v v v v v v | v       v   | \n\
+|   x     x<-----         x>x>x>x S   |>x>x>x>x>x>x>x | x       x   | \n\
+|   ^         ^           ^     ^ +                 v   v       v   | \n\
+|   x   I+R   x<-----     C+O   x I S | x<x<x<x<x<x<x | x       x   | \n\
+    ^   +++       ^             ^ v + | v             | v       v     \n\
+|   x   O+N       x<-----     S x<x<I | x>x>x>x>x>x>x | x       x   | \n\
+|   ^     v           ^       + ^ ^   |             v | v       v   | \n\
+|   x<x x<x o       o x<----- I>x S o | x<x<x<x<x<x<x | x       x   | \n\
+|     ^ v   ^       ^     ^       + ^   v               v       v   | \n\
+|     x x>x>x>x>x>x>x>x>x>x<----- I x<----- ----- ----- x |   | x   | \n\
+      ^   v   v v v           ^                         v |   | v     \n\
+|     x | o | o o o |         x<x<x<x<x<x<x<x<x<x<x<x<x<x<|<x<|<x<x<| \n\
+A     ^ |   |       |                 ^                 v |   | v   A \n\
+|<x<x<x<|<x<|<x<x<x<|<x<x<x<x<x<x<x<x<x<x<x<x<x<x<x<x<x<x |   | x   | \n\
+G ^   ^ |   |       |                 ^       v                 v   G \n\
+| x   x |   |       |                 x       x                 x<x<| \n\
+  ^   ^                               ^       v                 v     \n\
+o -A-G- ----- ----- ----- ----- ----- ----- ----- ----- ----- -G-A- o \n\
+                                                                      \n\
+';
+	var a = s.split('\n').map(function(s){ return s.split('') });
+	for(var y=0; y<height; y++) {
+		var my = 2*y;
+		for(var x=0; x<width; x++) {
+			var mx = 2*x;
+			switch(a[my][mx]) {
+				case ' ':
+					break;
+				case 'o':
+					addComponent('garbageCollector');
+					break;
+				case 'I':
+					a[my][mx+2] = a[my+2][mx] = a[my+2][mx+2] = ' ';
+					addComponent('ironBuyer');
+					break;
+				case 'S':
+					a[my+2][mx] = ' ';
+					addComponent('siliconBuyer');
+					break;
+				case 'G':
+					a[my][mx+2] = ' ';
+					addComponent('gasBuyer');
+					break;
+				case 'C':
+					a[my][mx+2] = ' ';
+					addComponent('coalBuyer');
+					break;
+				case 'A':
+					a[my][mx+2] = a[my+2][mx] = a[my+2][mx+2] = ' ';
+					addComponent('aluminiumBuyer');
+					break;
+				case 'E':
+					a[my][mx+2] = ' ';
+					// Special magic - the single explosives buyer is only present if cell is dead
+					if(!alive) addComponent('explosivesBuyer');
+					break;
+				case '-':
+					addSorter(0, 0, sorterMap[ a[my][mx+1] ]);
+					addSorter(1, 0, sorterMap[ a[my][mx+2] ]);
+					addSorter(2, 0, sorterMap[ a[my][mx+3] ]);
+					a[my][mx+2] = a[my][mx+4] = ' ';
+					a[my][mx+1] = a[my][mx+3] = '-';
+					addComponent('sorterHorizontal');
+					break;
+				case '|':
+					addSorter(0, 0, sorterMap[ a[my+1][mx] ]);
+					addSorter(0, 1, sorterMap[ a[my+2][mx] ]);
+					addSorter(0, 2, sorterMap[ a[my+3][mx] ]);
+					a[my+2][mx] = a[my+4][mx] = ' ';
+					a[my+1][mx] = a[my+3][mx] = '-';
+					addComponent('sorterVertical');
+					break;
+				case 'x':
+					addComponent('transportLine');
+					break;
+			}
+			switch(a[my][mx+1]) {
+				case '<':
+					addConnection(x+1, y, x, y);
+					break;
+				case '>':
+					addConnection(x, y, x+1, y);
+					break;
+			}
+			switch(a[my+1][mx]) {
+				case '^':
+					addConnection(x, y+1, x, y);
+					break;
+				case 'v':
+					addConnection(x, y, x, y+1);
+					break;
+			}
+		}
+	}
+
+	return [components, connections, sorters];
+}
 
 ! function () {
 	/*
@@ -2766,10 +3011,10 @@ define("config/main/factories", [], function () {
 			id: "level1",
 			idNum: 1,
 			name: "Factory",
-			tilesX: 68,
-			tilesY: 38,
-			startX: 8,
-			startY: 10,
+			tilesX: lifeSize*40,
+			tilesY: lifeSize*40,
+			startX: 1,
+			startY: 1,
 			price: 100,
 			terrains: {
 				G: "grass",
@@ -2780,183 +3025,12 @@ define("config/main/factories", [], function () {
 			buildableTerrains: {
 				floor: true
 			},
-			terrainMap: "XXXXXXXXXXXX.GGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG.GGGGGGGGGG.GGGGGGGGGGX          X.XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXG.GXXXXXXXXX.XXXXXXXXXGX          X.X        X         X           XG.GX        .        XGX           .         X         X            G.G         .        XGX           .         X                      G.G       XX.XX      XGX          X.X        X                     XG.GX      XG.GX      XGX          X.X        X                     XG.GXXX XXXXG.GX      XGX          X.X      X XX X                  XG.GX      XXXXX      XGX           .       X    X      X           XG.GX                 XGXXXX    XXXX.X      X    X      X           XG.GX                 XG.............X      X    X      XXXXXXXXXXXXXG.GXXXXXXXXXX  XXX  XXGXXXX    XXXX.X      X    X      X...................................X          X.X      X    X      X.GGGGGGXXXXXXXXXXXXXXX.XX  XXX  XXXX          X.X                  X.GGGGGGX              .           XX          X.XXX   XXXXXXXXX   XX.GGGGGGX             X.X          XX          X......................GGGGGGXX           XX.XX         XX          X.XXX   XXXXXXXXX   XX.GGGGGGGX           XG.GX         XX     X    X.X                  X.GGGGGGXX           XX.XX         XX     X    X.X                  X.GGGGGGX              .           XX     X    X.X            X     X.GGGGGGX             X.X          XX     XXXXXX.X            X     X.GGGGGGXX           XX.XX         XX         XG.X            X     X.GGGGGGGX           XG.GX         XXX         G.             X     X.GGGGGGXX           XX.XX         XGX         G.             X     X.GGGGGGX              .           XGX         G.             X     X.XXXGXXX             X.X          XGX         G.             X     X.X XXX              XX.XX         XGX        XG.X                   .                   XG.GX         XGXXXX  XXXXG.X                   .                   XX.XX         XGGGGGGGGGGGG.XXXXXXXX   XXX   XXX.X                    .           X...................GGGGGGGGGGGGGG.X                    .           XGGGGX  XXXXG.XXXXX................X                    .           XGXXXX     XX.X   XXXX   XXX   XXX.X                    .           XGX          .       X           X.X                  XX.X          XGX          .                    .                   X..X          XGX          .                    .      XXXXXXXX     X.XX          XGX        XX.X      X            .      XGGGGGGX     X.X           XGXXXXXXXXXXG.X      X           X.XXXXXXXGGGGGGXXXXXXX.X           XGGGGGGGGGGGG.XXXXXXXXXXXXXXXXXXXX.GGGGGGGGGGGGGGGGGGGG.XXXXXXXXXXXXX",
-			buildMap: "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX          XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX          XXX        X         X           XXXXX        -        XXX           -         X         X            ---         -        XXX           -         X                      ---       XXXXX      XXX          XXX        X                     XXXXX      XXXXX      XXX          XXX        X                     XXXXXXX XXXXXXXX      XXX          XXX      X XX X                  XXXXX      XXXXX      XXX           -       X    X      X           XXXXX                 XXXXXX    XXXXXX      X    X      X           XXXXX                 XXXXXX----XXXXXX      X    X      XXXXXXXXXXXXXXXXXXXXXXXXXX  XXX  XXXXXXX    XXXXXX      X    X      XXXXXXXXXXXXXXXXXXXXXXXXXX--XXX--XXXX          XXX      X    X      XXXXXXXXXXXXXXXXXXXXXXXXXX  XXX  XXXX          XXX                  XXXXXXXXX              -           XX          XXXXX   XXXXXXXXX   XXXXXXXXXX             XXX          XX          XXXXX---XXXXXXXXX---XXXXXXXXXXX           XXXXX         XX          XXXXX   XXXXXXXXX   XXXXXXXXXXX           XXXXX         XX     X    XXX                  XXXXXXXXXX           XXXXX         XX     X    XXX                  XXXXXXXXX              -           XX     X    XXX            X     XXXXXXXXX             XXX          XX     XXXXXXXX            X     XXXXXXXXXX           XXXXX         XX         XXXX            X     XXXXXXXXXX           XXXXX         XXX         --             X     XXXXXXXXXX           XXXXX         XXX         --             X     XXXXXXXXX              -           XXX         --             X     XXXXXXXXX             XXX          XXX         --             X     XXX XXX              XXXXX         XXX        X-XX                   -                   XXXXX         XXXXXX  XXXX-XX                   -                   XXXXX         XXXXXX-------XXXXXXXXX   XXX   XXXXX                    -           XXXXXX--XXXXXXXXXXXX--------------XX                    -           XXXXXX  XXXXXXXXXXXXXX---XXX---XXXXX                    -           XXXXXX     XXXX   XXXX   XXX   XXXXX                    -           XXX          -       X           XXX                  XXXX          XXX          -                    -                   XXXX          XXX          -                    -      XXXXXXXX     XXXX          XXX        XXXX      X            -      XXXXXXXX     XXX           XXXXXXXXXXXXXXX      X           XXXXXXXXXXXXXXXXXXXXXXXX           XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX",
-			areas: [{
-				id: "a2",
-				name: "A2",
-				idNum: 1,
-				price: 1200,
-				locations: [{
-					x: 0,
-					y: 0,
-					x2: 11,
-					y2: 9
-				}]
-			}, {
-				id: "a4",
-				name: "A4",
-				idNum: 2,
-				price: 25e4,
-				locations: [{
-					x: 0,
-					y: 11,
-					x2: 11,
-					y2: 27
-				}]
-			}, {
-				id: "a1",
-				name: "A1",
-				idNum: 3,
-				price: 700,
-				locations: [{
-					x: 0,
-					y: 30,
-					x2: 11,
-					y2: 37
-				}]
-			}, {
-				id: "a5",
-				name: "A5",
-				idNum: 4,
-				price: 26e6,
-				locations: [{
-					x: 13,
-					y: 1,
-					x2: 32,
-					y2: 14
-				}]
-			}, {
-				id: "a6",
-				name: "A6",
-				idNum: 5,
-				price: 32e6,
-				locations: [{
-					x: 33,
-					y: 1,
-					x2: 44,
-					y2: 10
-				}]
-			}, {
-				id: "a3",
-				name: "A3",
-				idNum: 6,
-				price: 12e3,
-				locations: [{
-					x: 13,
-					y: 31,
-					x2: 32,
-					y2: 37
-				}, {
-					x: 13,
-					y: 30,
-					x2: 17,
-					y2: 30
-				}]
-			}, {
-				id: "a7",
-				name: "A7",
-				idNum: 7,
-				price: 14e7,
-				locations: [{
-					x: 48,
-					y: 1,
-					x2: 66,
-					y2: 10
-				}]
-			}, {
-				id: "a9",
-				name: "A9",
-				idNum: 8,
-				price: 4e10,
-				locations: [{
-					x: 34,
-					y: 12,
-					x2: 53,
-					y2: 36
-				}, {
-					x: 54,
-					y: 12,
-					x2: 54,
-					y2: 32
-				}]
-			}, {
-				id: "a8",
-				name: "A8",
-				idNum: 9,
-				price: 29e8,
-				locations: [{
-					x: 56,
-					y: 12,
-					x2: 67,
-					y2: 37
-				}, {
-					x: 55,
-					y: 34,
-					x2: 55,
-					y2: 37
-				}]
-			}],
-			startComponents: [{
-				id: "ironBuyer",
-				x: 15,
-				y: 18
-			}, {
-				id: "ironFoundry",
-				x: 19,
-				y: 18
-			}, {
-				id: "ironSeller",
-				x: 25,
-				y: 18
-			}, {
-				id: "transportLine",
-				x: 17,
-				y: 18
-			}, {
-				id: "transportLine",
-				x: 18,
-				y: 18
-			}, {
-				id: "transportLine",
-				x: 23,
-				y: 18
-			}, {
-				id: "transportLine",
-				x: 24,
-				y: 18
-			}],
-			transportLineConnections: [{
-				fromX: 16,
-				fromY: 18,
-				toX: 17,
-				toY: 18
-			}, {
-				fromX: 17,
-				fromY: 18,
-				toX: 18,
-				toY: 18
-			}, {
-				fromX: 18,
-				fromY: 18,
-				toX: 19,
-				toY: 18
-			}, {
-				fromX: 22,
-				fromY: 18,
-				toX: 23,
-				toY: 18
-			}, {
-				fromX: 23,
-				fromY: 18,
-				toX: 24,
-				toY: 18
-			}, {
-				fromX: 24,
-				fromY: 18,
-				toX: 25,
-				toY: 18
-			}]
+			terrainMap: customTerrainMap(lifeSize*40, lifeSize*40),
+			buildMap: customBuildMap(lifeSize*40, lifeSize*40),
+			areas: [],
+			startComponents: customStartStuff('components'),
+			transportLineConnections: customStartStuff('connections'),
+			sorterResources: customStartStuff('sorters')
 		}, {
 			id: "level2",
 			idNum: 2,
@@ -6647,12 +6721,12 @@ define("game/action/UpdateComponentInputOutputAction", [], function () {
 			this.fromTile.getInputOutputManager().setOutput(this.fromTile.getDirection(this.toTile)), this.factory.getEventManager().invokeEvent(FactoryEvent.FACTORY_COMPONENTS_CHANGED, this.tile)
 		}, e
 	}),
-define("game/FactorySetup", ["game/action/BuyComponentAction", "game/action/UpdateComponentInputOutputAction"], function (e, t) {
+define("game/FactorySetup", ["game/action/BuyComponentAction", "game/action/UpdateComponentInputOutputAction", "game/action/UpdateSorterSortingResource"], function (e, t, z) {
 		var n = function (e) {
 			this.factory = e, this.factoryMeta = e.getMeta(), this.meta = e.getGame().getMeta()
 		};
 		return n.prototype.init = function () {
-			return this._initComponents(), this._initTransportLines(), this
+			return this._initComponents(), this._initTransportLines(), this._initSorters(), this
 		}, n.prototype._initComponents = function () {
 			if (!this.factoryMeta.startComponents) return;
 			for (var t in this.factoryMeta.startComponents) {
@@ -6669,6 +6743,16 @@ define("game/FactorySetup", ["game/action/BuyComponentAction", "game/action/Upda
 					r = this.factory.getTile(n.fromX, n.fromY),
 					i = this.factory.getTile(n.toX, n.toY),
 					s = new t(r, i);
+				s.canUpdate() && s.update()
+			}
+			return this
+		}, n.prototype._initSorters = function () {
+			if (!this.factoryMeta.sorterResources) return;
+			for (var e in this.factoryMeta.sorterResources) {
+				var n = this.factoryMeta.sorterResources[e],
+					r = this.factory.getTile(n.x, n.y),
+					// UpdateSorterSortingResource
+					s = new z(r.getComponent(), n.offsetX, n.offsetY, n.resource);
 				s.canUpdate() && s.update()
 			}
 			return this
