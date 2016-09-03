@@ -1,3 +1,5 @@
+var basicIncome = 1e9;
+
 ! function () {
 	/*
 	 RequireJS 2.1.8 Copyright (c) 2010-2012, The Dojo Foundation All Rights Reserved.
@@ -6994,6 +6996,8 @@ define("game/calculator/Calculator", ["game/calculator/FactoryCalculator"], func
 					researchProduction: 0,
 					factory_results: {}
 				};
+			t.profit += basicIncome;
+			t.researchProduction += basicIncome;
 			for (var n in this.factoryCalculators) {
 				var r = this.factoryCalculators[n].calculate();
 				t.profit += r.profit, t.researchProduction += r.researchProduction, t.factory_results[n] = r
