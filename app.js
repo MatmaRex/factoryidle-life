@@ -7098,7 +7098,7 @@ define("base/Benchmarker", [], function () {
 			this.firstStartTime = (new Date).getTime(), this.interval = setInterval(function () {
 				var e = (new Date).getTime(),
 					t = e - this.firstStartTime;
-				logger.info("Bench:" + this.name, "AVG: " + this.timeSpent + "ms / " + t + "ms (Runs: " + this.weightSum + ", Avg run time: " + Math.round(this.timeSpent / this.weightSum * 10) / 10 + "ms) CPU time spent: " + Math.round(this.timeSpent * 100 / t * 100) / 100 + "%"), this.timeSpent = 0, this.count = 0, this.weightSum = 0, this.firstStartTime = (new Date).getTime()
+				// logger.info("Bench:" + this.name, "AVG: " + this.timeSpent + "ms / " + t + "ms (Runs: " + this.weightSum + ", Avg run time: " + Math.round(this.timeSpent / this.weightSum * 10) / 10 + "ms) CPU time spent: " + Math.round(this.timeSpent * 100 / t * 100) / 100 + "%"), this.timeSpent = 0, this.count = 0, this.weightSum = 0, this.firstStartTime = (new Date).getTime()
 			}.bind(this), this.intervalValue)
 		}, e.prototype.destroy = function () {
 			this.interval && clearInterval(this.interval)
@@ -7340,7 +7340,7 @@ define("play/UrlHandler", [], function () {
 				})
 			}.bind(this), this.cloudSaveIntervalMs), this.localSaveInterval = setInterval(function () {
 				this.saveAutoLocal(function () {
-					logger.info(n, "Auto saved to local")
+					// logger.info(n, "Auto saved to local")
 				})
 			}.bind(this), this.localSaveIntervalMs)
 		}, r.prototype.destroy = function () {
